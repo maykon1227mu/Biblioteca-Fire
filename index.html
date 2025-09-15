@@ -1,0 +1,707 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Gerenciador de Biblioteca</title>
+    <!-- Tailwind CSS CDN para estilo -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f3f4f6;
+        }
+        .modal-overlay {
+            background-color: rgba(0, 0, 0, 0.5);
+        }
+        .loader {
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #7c2d12; /* cor marrom escura */
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        .book-card {
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+        }
+    </style>
+</head>
+<body class="p-4 md:p-8">
+    <!-- Conteúdo principal do aplicativo -->
+    <div id="mainApp" class="max-w-6xl mx-auto bg-white rounded-xl shadow-lg p-6 md:p-8">
+        <header class="mb-6 border-b pb-4">
+            <h1 class="text-3xl font-bold text-center text-gray-800">Gerenciador de Biblioteca</h1>
+            <p id="userIdDisplay" class="text-center text-sm text-gray-500 mt-2">ID de usuário: Carregando...</p>
+        </header>
+
+        <!-- Navegação -->
+        <nav class="flex justify-center gap-4 mb-6">
+            <button id="navCatalog" class="px-4 py-2 text-sm font-medium rounded-lg text-white bg-amber-800 shadow-md transition-colors duration-200">
+                Catálogo
+            </button>
+            <button id="navLoans" class="px-4 py-2 text-sm font-medium rounded-lg text-stone-800 bg-stone-300 hover:bg-stone-400 transition-colors duration-200">
+                Empréstimos
+            </button>
+        </nav>
+
+        <div class="flex flex-col md:flex-row items-center justify-between gap-4 mb-6">
+            <input type="text" id="searchInput" placeholder="Buscar por título, autor ou nome do aluno..." class="w-full md:w-2/3 px-4 py-2 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-amber-500 transition-all duration-200">
+            <div class="flex w-full md:w-auto md:justify-end gap-2">
+                 <button id="addBookBtn" class="w-full md:w-auto px-6 py-2 bg-amber-800 text-white rounded-lg font-semibold hover:bg-amber-900 transition-colors duration-200 shadow-md">
+                    Adicionar Livro
+                </button>
+                <button id="importJsonBtn" class="w-full md:w-auto px-6 py-2 bg-green-700 text-white rounded-lg font-semibold hover:bg-green-800 transition-colors duration-200 shadow-md">
+                    Importar JSON
+                </button>
+                <input type="file" id="jsonFileInput" class="hidden" accept="application/json">
+            </div>
+        </div>
+
+        <!-- Animação de Carregamento -->
+        <div id="loadingSpinner" class="flex justify-center items-center mt-8">
+            <div class="loader"></div>
+        </div>
+
+        <!-- Seção do Catálogo -->
+        <div id="catalogView">
+            <h2 class="text-2xl font-bold mt-8 mb-4 border-b pb-2">Catálogo Disponível</h2>
+            <div id="availableBooksContainer" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+                <!-- Livros disponíveis serão renderizados aqui -->
+            </div>
+            <div id="noAvailableBooks" class="hidden text-center text-gray-500 col-span-full mt-8">Nenhum livro disponível no momento.</div>
+        </div>
+
+        <!-- Seção de Empréstimos (inicialmente oculta) -->
+        <div id="loansView" class="hidden">
+            <h2 class="text-2xl font-bold mt-8 mb-4 border-b pb-2">Livros Emprestados</h2>
+            <div id="loanedBooksContainer" class="overflow-x-auto">
+                <table class="min-w-full divide-y divide-gray-200 rounded-lg shadow-md">
+                    <thead class="bg-gray-50">
+                        <tr>
+                            <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Título</th>
+                            <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider hidden md:table-cell">Autor</th>
+                            <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Emprestado Para</th>
+                            <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Série</th>
+                            <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider hidden md:table-cell">Data de Empréstimo</th>
+                            <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Data de Devolução</th>
+                            <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Ações</th>
+                        </tr>
+                    </thead>
+                    <tbody id="loanedBooksTableBody" class="bg-white divide-y divide-gray-200">
+                        <!-- Livros emprestados serão renderizados aqui -->
+                    </tbody>
+                </table>
+            </div>
+            <div id="noLoanedBooks" class="hidden text-center text-gray-500 col-span-full mt-8">Nenhum livro emprestado no momento.</div>
+        </div>
+    </div>
+
+    <!-- Modal para Adicionar/Editar Livro -->
+    <div id="bookModal" class="modal-overlay fixed inset-0 z-50 flex items-center justify-center p-4 hidden">
+        <div class="bg-white rounded-xl shadow-2xl w-full max-w-md p-6 relative">
+            <button id="closeModalBtn" class="absolute top-4 right-4 text-gray-400 hover:text-gray-600 transition-colors duration-200">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+                </svg>
+            </button>
+            <h2 id="modalTitle" class="text-2xl font-bold mb-4 text-gray-800">Adicionar Livro</h2>
+            <form id="bookForm" class="space-y-4">
+                <div>
+                    <label for="title" class="block text-sm font-medium text-gray-700">Título</label>
+                    <input type="text" id="title" required class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-amber-500 focus:ring-amber-500 sm:text-sm p-2">
+                </div>
+                <div>
+                    <label for="author" class="block text-sm font-medium text-gray-700">Autor</label>
+                    <input type="text" id="author" required class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-amber-500 focus:ring-amber-500 sm:text-sm p-2">
+                </div>
+                <div>
+                    <label for="year" class="block text-sm font-medium text-gray-700">Ano de Publicação</label>
+                    <input type="number" id="year" required class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-amber-500 focus:ring-amber-500 sm:text-sm p-2">
+                </div>
+                <div>
+                    <label for="quantity" class="block text-sm font-medium text-gray-700">Quantidade</label>
+                    <input type="number" id="quantity" required min="0" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-amber-500 focus:ring-amber-500 sm:text-sm p-2">
+                </div>
+                <div>
+                    <label for="cover" class="block text-sm font-medium text-gray-700">URL da Capa (opcional)</label>
+                    <input type="url" id="cover" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-amber-500 focus:ring-amber-500 sm:text-sm p-2">
+                </div>
+                <button type="submit" id="submitBtn" class="w-full px-4 py-2 bg-amber-800 text-white rounded-lg font-semibold hover:bg-amber-900 transition-colors duration-200 shadow-md">
+                    Adicionar
+                </button>
+            </form>
+        </div>
+    </div>
+
+    <!-- Modal para Emprestar Livro -->
+    <div id="loanModal" class="modal-overlay fixed inset-0 z-50 flex items-center justify-center p-4 hidden">
+        <div class="bg-white rounded-xl shadow-2xl w-full max-w-md p-6 relative">
+            <button id="closeLoanModalBtn" class="absolute top-4 right-4 text-gray-400 hover:text-gray-600 transition-colors duration-200">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+                </svg>
+            </button>
+            <h2 class="text-2xl font-bold mb-4 text-gray-800">Emprestar Livro</h2>
+            <form id="loanForm" class="space-y-4">
+                <div>
+                    <label for="loanName" class="block text-sm font-medium text-gray-700">Nome da Pessoa</label>
+                    <input type="text" id="loanName" required class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-amber-500 focus:ring-amber-500 sm:text-sm p-2">
+                </div>
+                <div>
+                    <label for="loanGrade" class="block text-sm font-medium text-gray-700">Série da Escola</label>
+                    <input type="text" id="loanGrade" required class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-amber-500 focus:ring-amber-500 sm:text-sm p-2">
+                </div>
+                <div>
+                    <label for="returnDateInput" class="block text-sm font-medium text-gray-700">Data de Devolução</label>
+                    <input type="date" id="returnDateInput" required class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-amber-500 focus:ring-amber-500 sm:text-sm p-2">
+                    <p id="loanDateError" class="text-red-500 text-sm mt-1 hidden">A data de devolução não pode ser no passado.</p>
+                </div>
+                 <!-- Removido o campo de quantidade de empréstimo para simplificar para 1 por transação -->
+                <button type="submit" id="submitLoanBtn" class="w-full px-4 py-2 bg-amber-800 text-white rounded-lg font-semibold hover:bg-amber-900 transition-colors duration-200 shadow-md">
+                    Confirmar Empréstimo
+                </button>
+            </form>
+        </div>
+    </div>
+
+    <!-- Modal de Confirmação de Exclusão -->
+    <div id="deleteModal" class="modal-overlay fixed inset-0 z-50 flex items-center justify-center p-4 hidden">
+        <div class="bg-white rounded-xl shadow-2xl w-full max-w-sm p-6 relative text-center">
+            <h3 class="text-xl font-bold mb-4 text-gray-800">Confirmar Exclusão</h3>
+            <p class="text-gray-600 mb-4">Para confirmar, digite <strong>EXCLUIR</strong> abaixo.</p>
+            <input type="text" id="deleteConfirmationInput" class="w-full px-4 py-2 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-red-500 transition-all duration-200 text-center">
+            <div class="mt-6 flex justify-center gap-4">
+                <button id="confirmDeleteBtn" class="w-full px-4 py-2 bg-red-600 text-white rounded-lg font-semibold hover:bg-red-700 transition-colors duration-200 shadow-md">
+                    Confirmar
+                </button>
+                <button id="cancelDeleteBtn" class="w-full px-4 py-2 bg-gray-300 text-gray-800 rounded-lg font-semibold hover:bg-gray-400 transition-colors duration-200 shadow-md">
+                    Cancelar
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal de Status de Importação -->
+    <div id="importStatusModal" class="modal-overlay fixed inset-0 z-50 flex items-center justify-center p-4 hidden">
+        <div class="bg-white rounded-xl shadow-2xl w-full max-w-sm p-6 relative text-center">
+            <h3 class="text-xl font-bold mb-4 text-gray-800">Status da Importação</h3>
+            <div id="importLoader" class="loader mx-auto mb-4"></div>
+            <p id="importStatusText" class="text-gray-600">A processar o ficheiro...</p>
+            <button id="closeImportStatusModalBtn" class="mt-6 w-full px-4 py-2 bg-amber-800 text-white rounded-lg font-semibold hover:bg-amber-900 transition-colors duration-200 shadow-md hidden">
+                Fechar
+            </button>
+        </div>
+    </div>
+
+
+    <!-- Bibliotecas do Firebase -->
+    <script type="module">
+        // Importações do Firebase: 'increment' foi adicionado para atualizações atômicas
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInAnonymously } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, doc, collection, query, onSnapshot, addDoc, updateDoc, deleteDoc, setLogLevel, getDocs, increment } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+        // IMPORTANTE: Substitua o objeto abaixo pela configuração do seu projeto Firebase
+        // Você pode encontrar essa configuração no Console do Firebase em:
+        // Configurações do projeto > Geral > Seus aplicativos > Aplicativo da Web > Configuração do Firebase > CDN
+        const firebaseConfig = {
+            apiKey: "AIzaSyDA5ZrIdYS-MX2A1gHX2a6cy_8d_4646FU",
+            authDomain: "biblioteca-10cac.firebaseapp.com",
+            projectId: "biblioteca-10cac",
+            storageBucket: "biblioteca-10cac.appspot.com",
+            messagingSenderId: "768579009064",
+            appId: "1:768579009064:web:bd09492cdace53c06dd31d",
+            measurementId: "G-86MRVJQ0PZ"
+        };
+
+
+
+        setLogLevel('debug');
+
+        // Referências do DOM
+        const navCatalog = document.getElementById('navCatalog');
+        const navLoans = document.getElementById('navLoans');
+        const catalogView = document.getElementById('catalogView');
+        const loansView = document.getElementById('loansView');
+        const availableBooksContainer = document.getElementById('availableBooksContainer');
+        const loanedBooksTableBody = document.getElementById('loanedBooksTableBody');
+        const noAvailableBooks = document.getElementById('noAvailableBooks');
+        const noLoanedBooks = document.getElementById('noLoanedBooks');
+        const searchInput = document.getElementById('searchInput');
+        const addBookBtn = document.getElementById('addBookBtn');
+        const bookModal = document.getElementById('bookModal');
+        const closeModalBtn = document.getElementById('closeModalBtn');
+        const bookForm = document.getElementById('bookForm');
+        const modalTitle = document.getElementById('modalTitle');
+        const submitBtn = document.getElementById('submitBtn');
+        const loadingSpinner = document.getElementById('loadingSpinner');
+        const userIdDisplay = document.getElementById('userIdDisplay');
+        const loanModal = document.getElementById('loanModal');
+        const closeLoanModalBtn = document.getElementById('closeLoanModalBtn');
+        const loanForm = document.getElementById('loanForm');
+        const returnDateInput = document.getElementById('returnDateInput');
+        const loanDateError = document.getElementById('loanDateError');
+        const mainApp = document.getElementById('mainApp');
+        const deleteModal = document.getElementById('deleteModal');
+        const confirmDeleteBtn = document.getElementById('confirmDeleteBtn');
+        const cancelDeleteBtn = document.getElementById('cancelDeleteBtn');
+        const deleteConfirmationInput = document.getElementById('deleteConfirmationInput');
+        const importJsonBtn = document.getElementById('importJsonBtn');
+        const jsonFileInput = document.getElementById('jsonFileInput');
+        const importStatusModal = document.getElementById('importStatusModal');
+        const importStatusText = document.getElementById('importStatusText');
+        const importLoader = document.getElementById('importLoader');
+        const closeImportStatusModalBtn = document.getElementById('closeImportStatusModalBtn');
+
+
+        // Variáveis de estado
+        let db, auth;
+        let userId = null;
+        let editingBookId = null;
+        let loaningBookId = null;
+        let bookToDeleteId = null;
+        let allBooks = [];
+        let allLoans = []; // NOVO: Array para armazenar os empréstimos
+        let currentView = 'catalog';
+
+        const startApp = async () => {
+            try {
+                const app = initializeApp(firebaseConfig);
+                auth = getAuth(app);
+                db = getFirestore(app);
+                const userCredential = await signInAnonymously(auth);
+                userId = userCredential.user.uid;
+                userIdDisplay.textContent = `Sessão iniciada com sucesso.`;
+                
+                await seedDatabase();
+                fetchBooks();
+                fetchLoans(); // NOVO: Busca os dados de empréstimos
+                switchView('catalog');
+            } catch (error) {
+                console.error("Erro ao configurar Firebase:", error);
+                loadingSpinner.classList.add('hidden'); // Esconde o spinner de carregamento
+                let errorMessage = `<p class="text-red-500 text-center">Ocorreu um erro ao carregar a aplicação. Verifique a sua conexão e a configuração do Firebase.</p>`;
+                
+                if (error.code === 'auth/configuration-not-found') {
+                    errorMessage = `
+                        <div class="text-center text-red-700 bg-red-100 border border-red-400 rounded-lg p-4">
+                            <h3 class="font-bold text-lg mb-2">Erro de Configuração do Firebase</h3>
+                            <p>O aplicativo não conseguiu ligar-se ao serviço de autenticação.</p>
+                            <p class="mt-2"><strong>Causa provável:</strong> O método de login "Anónimo" não está ativado no seu projeto Firebase.</p>
+                            <p class="mt-4 font-semibold">Como resolver:</p>
+                            <ol class="list-decimal list-inside text-left max-w-md mx-auto mt-2">
+                                <li>Vá para o <a href="https://console.firebase.google.com/" target="_blank" rel="noopener noreferrer" class="underline text-blue-600 hover:text-blue-800">Console do Firebase</a> e abra o seu projeto.</li>
+                                <li>No menu à esquerda, clique em <strong>Build > Authentication</strong>.</li>
+                                <li>Clique no separador <strong>"Sign-in method"</strong> (Método de início de sessão).</li>
+                                <li>Na lista de provedores, clique em <strong>"Anónimo"</strong> (ou "Anonymous").</li>
+                                <li>Ative o botão e clique em <strong>"Guardar"</strong>.</li>
+                                <li>Depois de guardar, recarregue esta página.</li>
+                            </ol>
+                        </div>
+                    `;
+                }
+                
+                mainApp.innerHTML = errorMessage;
+            }
+        };
+        
+        // Funções para semear o banco de dados com livros iniciais
+        const seedDatabase = async () => {
+            const booksRef = collection(db, getBooksCollectionPath());
+            const querySnapshot = await getDocs(query(booksRef));
+            if (querySnapshot.empty) {
+                const initialBooks = [
+                    { title: 'O Pequeno Príncipe', author: 'Antoine de Saint-Exupéry', year: 1943, cover: 'https://placehold.co/400x600/e5e7eb/4b5563?text=O+Pequeno+Príncipe', quantity: 5 },
+                    { title: 'Dom Casmurro', author: 'Machado de Assis', year: 1899, cover: 'https://placehold.co/400x600/e5e7eb/4b5563?text=Dom+Casmurro', quantity: 3 },
+                    { title: '1984', author: 'George Orwell', year: 1949, cover: 'https://placehold.co/400x600/e5e7eb/4b5563?text=1984', quantity: 7 },
+                    { title: 'Harry Potter e a Pedra Filosofal', author: 'J.K. Rowling', year: 1997, cover: 'https://placehold.co/400x600/e5e7eb/4b5563?text=Harry+Potter', quantity: 10 },
+                ];
+                for (const book of initialBooks) {
+                    await addDoc(booksRef, book);
+                }
+            }
+        };
+        
+        // Funções para obter os caminhos das coleções do Firestore
+        const getBooksCollectionPath = () => `books`;
+        const getLoansCollectionPath = () => `loans`;
+
+        // Busca livros do catálogo
+        const fetchBooks = () => {
+            if (!userId) return;
+            const q = query(collection(db, getBooksCollectionPath()));
+            onSnapshot(q, (querySnapshot) => {
+                loadingSpinner.classList.add('hidden');
+                allBooks = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                renderUI();
+            }, (error) => console.error("Erro ao buscar livros:", error));
+        };
+
+        // Busca os registros de empréstimos
+        const fetchLoans = () => {
+            if (!userId) return;
+            const q = query(collection(db, getLoansCollectionPath()));
+            onSnapshot(q, (querySnapshot) => {
+                allLoans = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                renderUI();
+            }, (error) => console.error("Erro ao buscar empréstimos:", error));
+        };
+
+        // Função central que renderiza a UI com base nos dados mais recentes
+        const renderUI = () => {
+            const searchTerm = searchInput.value.toLowerCase();
+            
+            const filteredBooks = allBooks.filter(book =>
+                book.title.toLowerCase().includes(searchTerm) ||
+                book.author.toLowerCase().includes(searchTerm)
+            );
+            
+            const filteredLoans = allLoans.filter(loan =>
+                loan.bookTitle.toLowerCase().includes(searchTerm) ||
+                loan.loanedTo.toLowerCase().includes(searchTerm)
+            );
+
+            renderCatalog(filteredBooks);
+            renderLoansTable(filteredLoans);
+        };
+
+        // Renderiza o catálogo de livros disponíveis
+        const renderCatalog = (books) => {
+            availableBooksContainer.innerHTML = '';
+            const booksInStock = books.filter(b => b.quantity > 0);
+            if (booksInStock.length === 0) {
+                noAvailableBooks.classList.remove('hidden');
+            } else {
+                noAvailableBooks.classList.add('hidden');
+                booksInStock.forEach(renderBookCard);
+            }
+        };
+
+        // Renderiza a tabela de livros emprestados
+        const renderLoansTable = (loans) => {
+            loanedBooksTableBody.innerHTML = '';
+            if (loans.length === 0) {
+                noLoanedBooks.classList.remove('hidden');
+            } else {
+                noLoanedBooks.classList.add('hidden');
+                loans.forEach(renderLoanedBookRow);
+            }
+        };
+
+        const renderBookCard = (book) => {
+            const card = document.createElement('div');
+            card.className = 'book-card bg-white rounded-lg shadow-md overflow-hidden transition-transform duration-200 hover:scale-[1.02] hover:shadow-xl';
+            
+            card.innerHTML = `
+                <div class="relative w-full h-48 overflow-hidden">
+                    <img src="${book.cover || 'https://placehold.co/400x600/e5e7eb/4b5563?text=Capa'}" alt="Capa de ${book.title}" class="object-cover w-full h-full">
+                </div>
+                <div class="p-4 flex flex-col flex-grow">
+                    <h3 class="text-xl font-semibold text-gray-800 truncate" title="${book.title}">${book.title}</h3>
+                    <p class="text-gray-600 text-sm mt-1 truncate" title="${book.author}">Autor: ${book.author}</p>
+                    <p class="text-gray-500 text-xs mt-2">Ano: ${book.year}</p>
+                    <p class="text-gray-500 text-xs mt-2 font-semibold">Disponíveis: ${book.quantity}</p>
+                    <div class="mt-4 pt-4 border-t border-gray-200 flex gap-2 justify-end">
+                        <button class="loan-btn px-4 py-2 bg-amber-600 text-white rounded-md font-medium text-sm hover:bg-amber-700 transition-colors duration-200" data-id="${book.id}">Emprestar</button>
+                        <button class="edit-btn px-4 py-2 bg-yellow-500 text-white rounded-md font-medium text-sm hover:bg-yellow-600 transition-colors duration-200" data-id="${book.id}">Editar</button>
+                        <button class="delete-btn px-4 py-2 bg-red-600 text-white rounded-md font-medium text-sm hover:bg-red-700 transition-colors duration-200" data-id="${book.id}">Excluir</button>
+                    </div>
+                </div>
+            `;
+            availableBooksContainer.appendChild(card);
+            
+            card.querySelector('.loan-btn').addEventListener('click', () => {
+                loaningBookId = book.id;
+                showModal(loanModal);
+            });
+            card.querySelector('.edit-btn').addEventListener('click', () => editBook(book));
+            card.querySelector('.delete-btn').addEventListener('click', () => deleteBook(book.id));
+        };
+        
+        const renderLoanedBookRow = (loan) => {
+            const row = document.createElement('tr');
+
+            const today = new Date();
+            today.setHours(0, 0, 0, 0); 
+
+            const returnDateObj = new Date(loan.returnDate);
+            
+            const isOverdue = returnDateObj < today;
+
+            row.className = `hover:bg-gray-100 transition-colors duration-200 ${isOverdue ? 'bg-red-100' : ''}`;
+            
+            const loanDate = new Date(loan.loanDate).toLocaleDateString();
+            const returnDate = returnDateObj.toLocaleDateString();
+
+            let returnDateHtml = `<td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">${returnDate}</td>`;
+            if (isOverdue) {
+                returnDateHtml = `
+                    <td class="px-6 py-4 whitespace-nowrap text-sm text-red-700 font-bold">
+                        ${returnDate} <span class="ml-2 px-2 py-1 text-xs font-semibold text-red-800 bg-red-200 rounded-full">ATRASADO</span>
+                    </td>
+                `;
+            }
+
+            row.innerHTML = `
+                <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">${loan.bookTitle}</td>
+                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500 hidden md:table-cell">${loan.bookAuthor}</td>
+                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">${loan.loanedTo}</td>
+                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">${loan.schoolGrade}</td>
+                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500 hidden md:table-cell">${loanDate}</td>
+                ${returnDateHtml}
+                <td class="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                    <button class="return-btn text-green-600 hover:text-green-900" data-loan-id="${loan.id}" data-book-id="${loan.bookId}">Devolver</button>
+                </td>
+            `;
+            loanedBooksTableBody.appendChild(row);
+            row.querySelector('.return-btn').addEventListener('click', (e) => {
+                const { loanId, bookId } = e.target.dataset;
+                returnBook(loanId, bookId);
+            });
+        };
+
+        const editBook = (book) => {
+            editingBookId = book.id;
+            modalTitle.textContent = 'Editar Livro';
+            submitBtn.textContent = 'Salvar Alterações';
+            bookForm.title.value = book.title;
+            bookForm.author.value = book.author;
+            bookForm.year.value = book.year;
+            bookForm.quantity.value = book.quantity;
+            bookForm.cover.value = book.cover || '';
+            showModal(bookModal);
+        };
+
+        const deleteBook = (id) => {
+            bookToDeleteId = id;
+            deleteConfirmationInput.value = '';
+            showModal(deleteModal);
+        };
+
+        const confirmDeletion = async () => {
+            if (deleteConfirmationInput.value === 'EXCLUIR' && bookToDeleteId) {
+                try {
+                    await deleteDoc(doc(db, getBooksCollectionPath(), bookToDeleteId));
+                } catch (error) {
+                    console.error("Erro ao excluir livro:", error);
+                } finally {
+                    hideModal(deleteModal);
+                    bookToDeleteId = null;
+                }
+            }
+        };
+
+        const handleLoanSubmit = async (e) => {
+            e.preventDefault();
+            const loanedTo = loanForm.loanName.value.trim();
+            const schoolGrade = loanForm.loanGrade.value.trim();
+            const returnDate = returnDateInput.value;
+
+            const today = new Date();
+            today.setHours(0, 0, 0, 0);
+            
+            const selectedDate = new Date(returnDate + 'T00:00:00');
+
+            if (selectedDate < today) {
+                loanDateError.classList.remove('hidden');
+                return;
+            }
+            loanDateError.classList.add('hidden');
+            
+            const bookToLoan = allBooks.find(book => book.id === loaningBookId);
+            if (!bookToLoan || bookToLoan.quantity < 1) {
+                console.error("Livro não disponível para empréstimo.");
+                return;
+            }
+
+            const loanData = {
+                bookId: loaningBookId,
+                bookTitle: bookToLoan.title,
+                bookAuthor: bookToLoan.author,
+                loanedTo,
+                schoolGrade,
+                loanDate: new Date().toISOString(),
+                returnDate: selectedDate.toISOString()
+            };
+
+            try {
+                await addDoc(collection(db, getLoansCollectionPath()), loanData);
+                await updateDoc(doc(db, getBooksCollectionPath(), loaningBookId), {
+                    quantity: increment(-1)
+                });
+                hideModal(loanModal);
+                loanForm.reset();
+                loaningBookId = null;
+            } catch (error) {
+                console.error("Erro ao processar empréstimo:", error);
+            }
+        };
+
+        const returnBook = async (loanId, bookId) => {
+            if (!loanId || !bookId) {
+                console.error("IDs ausentes para devolução.");
+                return;
+            }
+            try {
+                await deleteDoc(doc(db, getLoansCollectionPath(), loanId));
+                await updateDoc(doc(db, getBooksCollectionPath(), bookId), {
+                    quantity: increment(1)
+                });
+            } catch (error) {
+                console.error("Erro ao devolver livro:", error);
+            }
+        };
+
+        const handleFormSubmit = async (e) => {
+            e.preventDefault();
+            const bookData = {
+                title: bookForm.title.value,
+                author: bookForm.author.value,
+                year: parseInt(bookForm.year.value),
+                quantity: parseInt(bookForm.quantity.value),
+                cover: bookForm.cover.value,
+            };
+            try {
+                if (editingBookId) {
+                    await updateDoc(doc(db, getBooksCollectionPath(), editingBookId), bookData);
+                } else {
+                    await addDoc(collection(db, getBooksCollectionPath()), bookData);
+                }
+                bookForm.reset();
+                hideModal(bookModal);
+                editingBookId = null;
+            } catch (error) {
+                console.error("Erro ao salvar livro:", error);
+            }
+        };
+
+        const switchView = (view) => {
+            currentView = view;
+            if (view === 'catalog') {
+                catalogView.classList.remove('hidden');
+                loansView.classList.add('hidden');
+                navCatalog.classList.add('bg-amber-800', 'text-white');
+                navCatalog.classList.remove('bg-stone-300', 'text-stone-800');
+                navLoans.classList.remove('bg-amber-800', 'text-white');
+                navLoans.classList.add('bg-stone-300', 'text-stone-800');
+            } else {
+                catalogView.classList.add('hidden');
+                loansView.classList.remove('hidden');
+                navLoans.classList.add('bg-amber-800', 'text-white');
+                navLoans.classList.remove('bg-stone-300', 'text-stone-800');
+                navCatalog.classList.remove('bg-amber-800', 'text-white');
+                navCatalog.classList.add('bg-stone-300', 'text-stone-800');
+            }
+            renderUI();
+        };
+
+        const showModal = (modal) => modal.classList.remove('hidden');
+        const hideModal = (modal) => modal.classList.add('hidden');
+        
+        const handleJsonFileUpload = (event) => {
+            const file = event.target.files[0];
+            if (!file) return;
+
+            showModal(importStatusModal);
+            importStatusText.textContent = 'A ler o ficheiro...';
+            importLoader.classList.remove('hidden');
+            closeImportStatusModalBtn.classList.add('hidden');
+
+            const reader = new FileReader();
+            reader.onload = async (e) => {
+                try {
+                    const booksToImport = JSON.parse(e.target.result);
+                    let successCount = 0;
+                    let errorCount = 0;
+
+                    // Itera sobre todos os itens, começando do segundo (índice 1) para ignorar os cabeçalhos
+                    for (let i = 1; i < booksToImport.length; i++) {
+                        const item = booksToImport[i];
+                        const title = item[""]; // A coluna do título não tem nome no seu JSON
+                        const author = item["__1"]; // A coluna do autor é "__1"
+
+                        if (title && author && typeof title === 'string' && typeof author === 'string' && title.trim() !== '' && author.trim() !== '') {
+                            const bookData = {
+                                title: title.trim(),
+                                author: author.trim(),
+                                year: new Date().getFullYear(), // Define o ano atual como padrão
+                                quantity: 1, // Define a quantidade padrão como 1
+                                cover: '' // URL da capa fica em branco
+                            };
+                            try {
+                                await addDoc(collection(db, getBooksCollectionPath()), bookData);
+                                successCount++;
+                            } catch (dbError) {
+                                console.error("Erro ao adicionar livro ao Firestore:", dbError, item);
+                                errorCount++;
+                            }
+                        } else {
+                            console.warn("Item ignorado por falta de título ou autor:", item);
+                            errorCount++;
+                        }
+                    }
+
+                    importStatusText.innerHTML = `
+                        <strong>Importação Concluída!</strong><br>
+                        ${successCount} livros importados com sucesso.<br>
+                        ${errorCount} registos falharam ou foram ignorados.
+                    `;
+                } catch (parseError) {
+                    console.error("Erro ao analisar o JSON:", parseError);
+                    importStatusText.textContent = "Erro: O ficheiro selecionado não é um JSON válido.";
+                } finally {
+                    importLoader.classList.add('hidden');
+                    closeImportStatusModalBtn.classList.remove('hidden');
+                    jsonFileInput.value = ''; // Limpa o input do ficheiro
+                }
+            };
+            reader.onerror = () => {
+                importStatusText.textContent = "Erro ao ler o ficheiro.";
+                importLoader.classList.add('hidden');
+                closeImportStatusModalBtn.classList.remove('hidden');
+                jsonFileInput.value = '';
+            };
+            reader.readAsText(file);
+        };
+
+        // Ouvintes de evento
+        navCatalog.addEventListener('click', () => switchView('catalog'));
+        navLoans.addEventListener('click', () => switchView('loans'));
+        addBookBtn.addEventListener('click', () => {
+            editingBookId = null;
+            modalTitle.textContent = 'Adicionar Livro';
+            submitBtn.textContent = 'Adicionar';
+            bookForm.reset();
+            showModal(bookModal);
+        });
+        
+        closeModalBtn.addEventListener('click', () => hideModal(bookModal));
+        closeLoanModalBtn.addEventListener('click', () => hideModal(loanModal));
+        cancelDeleteBtn.addEventListener('click', () => hideModal(deleteModal));
+        confirmDeleteBtn.addEventListener('click', confirmDeletion);
+        
+        bookModal.addEventListener('click', (e) => e.target === bookModal && hideModal(bookModal));
+        loanModal.addEventListener('click', (e) => e.target === loanModal && hideModal(loanModal));
+        deleteModal.addEventListener('click', (e) => e.target === deleteModal && hideModal(deleteModal));
+        
+        bookForm.addEventListener('submit', handleFormSubmit);
+        loanForm.addEventListener('submit', handleLoanSubmit);
+        searchInput.addEventListener('input', renderUI);
+        
+        importJsonBtn.addEventListener('click', () => jsonFileInput.click());
+        jsonFileInput.addEventListener('change', handleJsonFileUpload);
+        closeImportStatusModalBtn.addEventListener('click', () => hideModal(importStatusModal));
+
+        // Inicia a aplicação assim que a página carrega
+        startApp();
+    </script>
+</body>
+</html>
+
